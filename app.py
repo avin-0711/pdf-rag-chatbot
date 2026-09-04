@@ -482,7 +482,13 @@ if st.session_state.theme_mode == "Dark":
         .app-title, .app-deck, .metric-strip, [data-testid="stChatMessage"] { color: var(--ink); }
         .app-deck, [data-testid="stCaptionContainer"] { color: var(--muted); }
         div[data-testid="stFileUploader"] { background: rgba(255,255,255,.04); border-color: #55766c; }
+        [data-testid="stFileUploaderDropzone"] { background: #1c2c29 !important; border-color: #55766c !important; }
         [data-testid="stAlert"] { background: #20332f !important; border-color: #55766c !important; color: #edf3f0 !important; }
+        [data-testid="stAlertContainer"], [data-testid="stAlertContainer"] * { background: #20332f !important; color: #edf3f0 !important; }
+        [data-testid="stMetricLabel"], [data-testid="stMetricValue"], [data-testid="stMetricDelta"] { color: #edf3f0 !important; }
+        section[data-testid="stAppScrollToBottomContainer"] > div,
+        [data-testid="stBottom"], [data-testid="stBottom"] > div,
+        [data-testid="stBottom"] > div > div { background: #162321 !important; }
         [data-testid="stChatInput"] { background: #20332f !important; border-color: #55766c !important; }
         [data-testid="stChatInput"] textarea,
         [data-testid="stChatInput"] input { color: #edf3f0 !important; caret-color: #e89a7e !important; }
