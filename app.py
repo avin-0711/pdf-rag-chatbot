@@ -25,15 +25,42 @@ MAX_PDFS = 50
 
 st.set_page_config(
     page_title="PDF RAG Chatbot",
-    page_icon="📄",
-    layout="wide"
+    page_icon=":material/menu_book:",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-st.title("📄 PDF RAG Chatbot")
+st.markdown(
+    """
+    <style>
+    :root {
+        --ink: #20333a;
+        --muted: #65757a;
+        --paper: #fbfaf7;
+        --line: #dfe7e4;
+        --sage: #477568;
+        --coral: #c56b52;
+    }
+    .stApp { background: var(--paper); }
+    [data-testid="stSidebar"] { background: #f1f5f2; border-right: 1px solid var(--line); }
+    [data-testid="stSidebar"] > div:first-child { padding-top: 2rem; }
+    .app-kicker { color: var(--coral); font-size: .74rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+    .app-title { color: var(--ink); font-size: clamp(2.2rem, 4vw, 4.4rem); line-height: .98; letter-spacing: -.045em; font-weight: 750; margin: .45rem 0 .8rem; }
+    .app-deck { color: var(--muted); font-size: 1rem; max-width: 42rem; line-height: 1.55; }
+    .metric-strip { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: .8rem 0; margin: 1.5rem 0 2.1rem; }
+    .source-label { color: var(--sage); font-weight: 650; }
+    [data-testid="stChatMessage"] { border-bottom: 1px solid rgba(223, 231, 228, .75); padding-bottom: 1.25rem; }
+    div[data-testid="stFileUploader"] { border: 1px dashed #a9beb7; border-radius: 10px; background: rgba(255,255,255,.52); padding: .35rem; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-st.caption(
-    "Upload up to 50 PDF files and ask questions "
-    "across their combined contents."
+st.markdown('<div class="app-kicker">Private reading room</div>', unsafe_allow_html=True)
+st.markdown('<div class="app-title">Ask your documents<br><span style="color:#477568">with receipts.</span></div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="app-deck">Bring your PDFs together, search their meaning, and get concise answers tied back to the exact document and page.</div>',
+    unsafe_allow_html=True,
 )
 
 
@@ -84,7 +111,8 @@ retriever = get_retriever()
 
 with st.sidebar:
 
-    st.header("📚 Documents")
+    st.header("Your library", icon=":material/folder_open:")
+    st.caption("Up to 50 PDFs per indexing session")
 
     uploads = st.file_uploader(
         "Choose PDF files",
@@ -116,8 +144,19 @@ with st.sidebar:
     index_documents = st.button(
         "Index PDFs",
         type="primary",
-        disabled=not uploads
+        icon=":material/bolt:",
+        disabled=not uploads,
+        width="stretch",
     )
+
+    if st.button(
+        "Clear conversation",
+        icon=":material/refresh:",
+        width="stretch",
+        disabled=not st.session_state.messages,
+    ):
+        st.session_state.messages = []
+        st.rerun()
 
     # ==========================================
     # INDEX DOCUMENTS
@@ -382,7 +421,7 @@ with st.sidebar:
 
     st.divider()
 
-    st.subheader("📄 Active PDFs")
+    st.subheader("Active PDFs", icon=":material/library_books:")
 
     active_names = (
         st.session_state.active_document_names
@@ -390,16 +429,11 @@ with st.sidebar:
 
     if active_names:
 
-        st.success(
-            f"{len(active_names)} PDF"
-            f"{'s' if len(active_names) != 1 else ''} active"
-        )
+        st.badge(f"{len(active_names)} active", icon=":material/check:", color="green")
 
         for name in active_names:
 
-            st.caption(
-                f"• {name}"
-            )
+            st.markdown(f":material/description: **{name}**")
 
         st.caption(
             "Questions will search only these PDFs."
@@ -416,22 +450,26 @@ with st.sidebar:
 # MAIN CHAT AREA
 # ==========================================
 
-st.subheader("💬 Ask your documents")
+active_ids = st.session_state.active_document_ids
+active_names = st.session_state.active_document_names
 
+st.markdown('<div class="metric-strip">', unsafe_allow_html=True)
+metric_a, metric_b, metric_c = st.columns(3)
+with metric_a:
+    st.metric("Active PDFs", len(active_ids))
+with metric_b:
+    st.metric("Conversation turns", len(st.session_state.messages) // 2)
+with metric_c:
+    st.metric("Retrieval mode", "Top-K semantic")
+st.markdown('</div>', unsafe_allow_html=True)
 
-active_ids = (
-    st.session_state.active_document_ids
-)
-
-active_names = (
-    st.session_state.active_document_names
-)
+st.subheader("A clear answer starts with a clear question", icon=":material/chat:")
 
 
 if active_ids:
 
     st.caption(
-        f"🔎 Searching across "
+        f":material/search: Searching across "
         f"**{len(active_ids)} active PDF"
         f"{'s' if len(active_ids) != 1 else ''}**"
     )
@@ -446,6 +484,21 @@ else:
 
 # ==========================================
 # QUESTION
+
+if not st.session_state.messages:
+    suggestions = {
+        ":material/summarize: Give me a concise summary": "Give me a concise summary of the uploaded documents.",
+        ":material/compare_arrows: Compare the documents": "Compare the main themes across the uploaded documents.",
+        ":material/fact_check: Find a supporting detail": "What is the most important supporting detail in the documents?",
+    }
+    suggestion = st.pills(
+        "Start with a prompt",
+        list(suggestions),
+        label_visibility="collapsed",
+    )
+    suggested_question = suggestions.get(suggestion)
+else:
+    suggested_question = None
 # ==========================================
 
 for message in st.session_state.messages:
@@ -453,8 +506,10 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 question = st.chat_input(
-    "Ask something about your PDFs..."
+    "Ask something about your PDFs...",
+    submit_mode="disable",
 )
+question = question or suggested_question
 
 
 # ==========================================
@@ -468,11 +523,11 @@ if question:
         "content": question,
     })
 
-    with st.chat_message("user"):
+    with st.chat_message("user", avatar=":material/person:"):
 
         st.write(question)
 
-    with st.chat_message("assistant"):
+    with st.chat_message("assistant", avatar=":material/menu_book:"):
 
         matches = []
 
@@ -488,9 +543,7 @@ if question:
 
             try:
 
-                with st.spinner(
-                    "Searching your PDFs..."
-                ):
+                with st.status(":shimmer[Searching your PDFs]", type="compact") as search_status:
 
                     previous_questions = [
                         message["content"]
@@ -505,6 +558,7 @@ if question:
                         document_ids=active_ids,
                         n_results=5
                     )
+                    search_status.update(label="Sources found", state="complete")
 
                 if matches:
 

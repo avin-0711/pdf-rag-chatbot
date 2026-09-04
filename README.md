@@ -21,6 +21,8 @@ pdf-rag-chatbot/
 ├── app.py
 ├── requirements.txt
 ├── .env.example
+├── .streamlit/
+│   └── config.toml
 ├── architecture.md
 ├── docs/
 │   ├── demo-script.md
