@@ -482,7 +482,14 @@ if st.session_state.theme_mode == "Dark":
         .app-title, .app-deck, .metric-strip, [data-testid="stChatMessage"] { color: var(--ink); }
         .app-deck, [data-testid="stCaptionContainer"] { color: var(--muted); }
         div[data-testid="stFileUploader"] { background: rgba(255,255,255,.04); border-color: #55766c; }
-        [data-testid="stChatInput"] { background: #20332f; border-color: #55766c; }
+        [data-testid="stAlert"] { background: #20332f !important; border-color: #55766c !important; color: #edf3f0 !important; }
+        [data-testid="stChatInput"] { background: #20332f !important; border-color: #55766c !important; }
+        [data-testid="stChatInput"] textarea,
+        [data-testid="stChatInput"] input { color: #edf3f0 !important; caret-color: #e89a7e !important; }
+        [data-testid="stChatInput"] textarea::placeholder,
+        [data-testid="stChatInput"] input::placeholder { color: #a9bbb5 !important; opacity: 1 !important; }
+        [data-testid="stChatInput"] button { color: #edf3f0 !important; }
+        [data-testid="stAppViewContainer"] button:not([kind="primary"]) { color: #edf3f0; background: #20332f; border-color: #55766c; }
         </style>
         """,
         unsafe_allow_html=True,
