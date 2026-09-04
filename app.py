@@ -489,7 +489,7 @@ if st.session_state.theme_mode == "Dark":
         section[data-testid="stAppScrollToBottomContainer"] > div,
         [data-testid="stBottom"], [data-testid="stBottom"] > div,
         [data-testid="stBottom"] > div > div { background: #162321 !important; }
-        [data-testid="stChatInput"] { background: #20332f !important; border-color: #55766c !important; }
+        [data-testid="stChatInput"], [data-testid="stChatInput"] > div { background: #20332f !important; border-color: #55766c !important; }
         [data-testid="stChatInput"] textarea,
         [data-testid="stChatInput"] input { color: #edf3f0 !important; caret-color: #e89a7e !important; }
         [data-testid="stChatInput"] textarea::placeholder,
