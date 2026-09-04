@@ -115,6 +115,14 @@ class VectorDatabase:
         if not document_ids:
             return []
 
+        use_vector_rpc = os.getenv("USE_VECTOR_RPC", "false").lower() == "true"
+        if not use_vector_rpc:
+            return self._legacy_search_chunks(
+                query_embedding,
+                document_ids,
+                n_results,
+            )
+
         try:
             response = self.client.rpc(
                 "match_chunks",

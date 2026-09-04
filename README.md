@@ -79,6 +79,7 @@ Create a `.env` file in the project root. Start from `.env.example`:
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-supabase-key
 GEMINI_API_KEY=your-gemini-api-key
+USE_VECTOR_RPC=false
 ```
 
 Never commit `.env` or paste live credentials into source code. For Streamlit Community Cloud, add the same values under **App settings -> Secrets** using TOML syntax:
@@ -113,7 +114,7 @@ The application expects these tables:
 | `content` | `text` | Chunk text |
 | `embedding` | `vector(384)` | `all-MiniLM-L6-v2` embedding |
 
-The complete table, RPC, and HNSW index setup is in `supabase/schema.sql`. Run that file in the Supabase SQL editor before using the app.
+The complete table, RPC, and HNSW index setup is in `supabase/schema.sql`. Run that file in the Supabase SQL editor before using the app. Keep `USE_VECTOR_RPC=false` until the SQL has been applied and the `match_chunks` function appears in Supabase's schema cache; then set it to `true` for indexed vector retrieval.
 
 The RPC performs Top-K cosine retrieval inside Postgres. The application also rejects results below a similarity threshold so unsupported questions can receive a no-answer response.
 
