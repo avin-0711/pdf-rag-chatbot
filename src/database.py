@@ -126,7 +126,14 @@ class VectorDatabase:
             ).execute()
             return response.data or []
         except Exception as error:
-            if getattr(error, "code", None) != "PGRST202":
+            error_code = getattr(error, "code", None)
+            error_text = str(error)
+            missing_rpc = (
+                error_code == "PGRST202"
+                or "Could not find the function public.match_chunks" in error_text
+                or "schema cache" in error_text
+            )
+            if not missing_rpc:
                 raise
             return self._legacy_search_chunks(
                 query_embedding,

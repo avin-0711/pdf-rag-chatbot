@@ -50,6 +50,37 @@ def test_retriever_uses_rpc_and_similarity_threshold():
     assert [result["source"] for result in results] == ["a.pdf"]
 
 
+def test_database_recognizes_missing_rpc_error_text():
+    from src.database import VectorDatabase
+
+    class FakeRpc:
+        def execute(self):
+            raise RuntimeError(
+                "Could not find the function public.match_chunks in the schema cache"
+            )
+
+    class FakeQuery:
+        def select(self, columns):
+            return self
+
+        def in_(self, column, values):
+            return self
+
+        def execute(self):
+            return SimpleNamespace(data=[])
+
+    class FakeClient:
+        def rpc(self, name, params):
+            return FakeRpc()
+
+        def table(self, name):
+            return FakeQuery()
+
+    database = object.__new__(VectorDatabase)
+    database.client = FakeClient()
+    assert database.search_chunks([0.1, 0.2], [1], 5) == []
+
+
 def test_invalid_citation_labels_are_removed(monkeypatch):
     class FakeClient:
         class Models:
