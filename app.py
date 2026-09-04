@@ -1,5 +1,6 @@
 import hashlib
 import tempfile
+from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
@@ -16,8 +17,11 @@ load_dotenv()
 
 
 # ==========================================
-# PAGE CONFIGURATION
+# CONFIGURATION
 # ==========================================
+
+MAX_PDFS = 50
+
 
 st.set_page_config(
     page_title="PDF RAG Chatbot",
@@ -26,8 +30,10 @@ st.set_page_config(
 )
 
 st.title("📄 PDF RAG Chatbot")
+
 st.caption(
-    "Upload a PDF, index it, and ask questions about that PDF."
+    "Upload up to 50 PDF files and ask questions "
+    "across their combined contents."
 )
 
 
@@ -35,15 +41,18 @@ st.caption(
 # SESSION STATE
 # ==========================================
 
-if "active_document_id" not in st.session_state:
-    st.session_state.active_document_id = None
+if "active_document_ids" not in st.session_state:
+    st.session_state.active_document_ids = []
 
-if "active_document_name" not in st.session_state:
-    st.session_state.active_document_name = None
+if "active_document_names" not in st.session_state:
+    st.session_state.active_document_names = []
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
 
 # ==========================================
-# LOAD MODELS
+# LOAD RESOURCES
 # ==========================================
 
 @st.cache_resource
@@ -58,7 +67,10 @@ def get_database():
 
 @st.cache_resource
 def get_retriever():
-    return Retriever()
+    return Retriever(
+        database=database,
+        embedding_model=embedding_model,
+    )
 
 
 embedding_model = get_embedding_model()
@@ -75,355 +87,476 @@ with st.sidebar:
     st.header("📚 Documents")
 
     uploads = st.file_uploader(
-        "Choose a PDF",
+        "Choose PDF files",
         type=["pdf"],
-        accept_multiple_files=False
+        accept_multiple_files=True
     )
 
-    index_document = st.button(
-        "Index PDF",
+    # ==========================================
+    # 50 PDF LIMIT
+    # ==========================================
+
+    if uploads and len(uploads) > MAX_PDFS:
+
+        st.error(
+            f"You selected {len(uploads)} PDFs. "
+            f"The maximum allowed is {MAX_PDFS}."
+        )
+
+        uploads = uploads[:MAX_PDFS]
+
+        st.warning(
+            f"Only the first {MAX_PDFS} PDFs will be used."
+        )
+
+    # ==========================================
+    # INDEX BUTTON
+    # ==========================================
+
+    index_documents = st.button(
+        "Index PDFs",
         type="primary",
         disabled=not uploads
     )
 
-    # ======================================
-    # INDEX DOCUMENT
-    # ======================================
+    # ==========================================
+    # INDEX DOCUMENTS
+    # ==========================================
 
-    if index_document and uploads:
+    if index_documents and uploads:
 
-        upload = uploads
+        total_files = len(uploads)
 
-        progress = st.progress(
+        overall_progress = st.progress(
             0,
-            text="Preparing PDF..."
+            text="Starting indexing..."
         )
 
-        try:
+        indexed_ids = []
+        indexed_names = []
 
-            # ==================================
-            # Read PDF bytes
-            # ==================================
+        total_chunks = 0
 
-            file_bytes = upload.getvalue()
+        successful_files = 0
+        skipped_files = 0
+        failed_files = 0
 
-            file_hash = hashlib.sha256(
-                file_bytes
-            ).hexdigest()
+        for file_index, upload in enumerate(uploads):
 
-            progress.progress(
-                10,
-                text="Checking document..."
-            )
+            try:
 
-            # ==================================
-            # Check whether PDF already exists
-            # ==================================
+                # ==================================
+                # Progress
+                # ==================================
 
-            existing = (
-                database.client
-                .table("documents")
-                .select("id, filename")
-                .eq("file_hash", file_hash)
-                .execute()
-            )
-
-            if existing.data:
-
-                document_id = existing.data[0]["id"]
-
-                document_name = existing.data[0]["filename"]
-
-                # Make this document active
-                st.session_state.active_document_id = document_id
-                st.session_state.active_document_name = document_name
-
-                progress.progress(
-                    100,
-                    text="PDF selected."
+                overall_progress.progress(
+                    file_index / total_files,
+                    text=(
+                        f"Processing "
+                        f"{file_index + 1}/{total_files}: "
+                        f"{upload.name}"
+                    )
                 )
 
-                st.success(
-                    f"📄 {document_name} is already indexed."
+                # ==================================
+                # Read file
+                # ==================================
+
+                file_bytes = upload.getvalue()
+
+                file_hash = hashlib.sha256(
+                    file_bytes
+                ).hexdigest()
+
+                # ==================================
+                # Check if already indexed
+                # ==================================
+
+                existing = (
+                    database.client
+                    .table("documents")
+                    .select(
+                        "id, filename"
+                    )
+                    .eq(
+                        "file_hash",
+                        file_hash
+                    )
+                    .execute()
                 )
 
-                st.info(
-                    "This PDF is now the active document. "
-                    "Questions will only search this PDF."
-                )
+                if existing.data:
 
-            else:
+                    document_id = existing.data[0]["id"]
+                    document_name = existing.data[0]["filename"]
+
+                    indexed_ids.append(
+                        document_id
+                    )
+
+                    indexed_names.append(
+                        document_name
+                    )
+
+                    skipped_files += 1
+
+                    st.info(
+                        f"⏭️ {document_name} "
+                        f"is already indexed."
+                    )
+
+                    continue
 
                 # ==================================
                 # Save temporary PDF
                 # ==================================
-
-                progress.progress(
-                    20,
-                    text="Reading PDF..."
-                )
 
                 with tempfile.NamedTemporaryFile(
                     delete=False,
                     suffix=".pdf"
                 ) as temp_file:
 
-                    temp_file.write(file_bytes)
+                    temp_file.write(
+                        file_bytes
+                    )
 
                     temp_path = temp_file.name
 
                 # ==================================
-                # Extract text
+                # Extract PDF text
                 # ==================================
 
-                pages = extract_text_from_pdf(
-                    temp_path
-                )
+                try:
+                    pages = extract_text_from_pdf(
+                        temp_path
+                    )
+                finally:
+                    Path(temp_path).unlink(
+                        missing_ok=True
+                    )
 
                 if not pages:
 
-                    st.error(
-                        f"Could not extract text from {upload.name}."
+                    failed_files += 1
+
+                    st.warning(
+                        f"⚠️ Could not extract text "
+                        f"from {upload.name}."
                     )
 
-                    progress.empty()
+                    continue
 
-                else:
+                # ==================================
+                # Create chunks
+                # ==================================
 
-                    progress.progress(
-                        40,
-                        text="Creating chunks..."
+                chunks = chunk_pages(
+                    pages
+                )
+
+                if not chunks:
+
+                    failed_files += 1
+
+                    st.warning(
+                        f"⚠️ No text chunks found "
+                        f"in {upload.name}."
                     )
 
-                    # ==================================
-                    # Create chunks
-                    # ==================================
+                    continue
 
-                    chunks = chunk_pages(
-                        pages
-                    )
+                # ==================================
+                # Generate embeddings
+                # ==================================
 
-                    if not chunks:
+                vectors = embedding_model.encode(
+                    [
+                        str(chunk["text"])
+                        for chunk in chunks
+                    ]
+                )
 
-                        st.error(
-                            f"No text chunks found in {upload.name}."
-                        )
+                # ==================================
+                # Create document
+                # ==================================
 
-                        progress.empty()
+                document_id = database.add_document(
+                    filename=upload.name,
+                    file_hash=file_hash
+                )
 
-                    else:
+                # ==================================
+                # Store chunks
+                # ==================================
 
-                        progress.progress(
-                            60,
-                            text="Creating embeddings..."
-                        )
+                stored = database.add_chunks(
+                    chunks=chunks,
+                    embeddings=vectors,
+                    document_id=document_id,
+                    document_name=upload.name
+                )
 
-                        # ==================================
-                        # Generate embeddings
-                        # ==================================
+                # ==================================
+                # Add to active knowledge base
+                # ==================================
 
-                        vectors = embedding_model.encode(
-                            [
-                                str(chunk["text"])
-                                for chunk in chunks
-                            ]
-                        )
+                indexed_ids.append(
+                    document_id
+                )
 
-                        progress.progress(
-                            75,
-                            text="Saving document..."
-                        )
+                indexed_names.append(
+                    upload.name
+                )
 
-                        # ==================================
-                        # Add document
-                        # ==================================
+                total_chunks += stored
+                successful_files += 1
 
-                        document_id = database.add_document(
-                            filename=upload.name,
-                            file_hash=file_hash
-                        )
+                st.success(
+                    f"✅ {upload.name} — "
+                    f"{stored} chunks"
+                )
 
-                        # ==================================
-                        # Add chunks
-                        # ==================================
+            except Exception as e:
 
-                        stored = database.add_chunks(
-                            chunks=chunks,
-                            embeddings=vectors,
-                            document_id=document_id,
-                            document_name=upload.name
-                        )
+                failed_files += 1
 
-                        # ==================================
-                        # Make newly indexed PDF ACTIVE
-                        # ==================================
+                st.error(
+                    f"❌ Error processing "
+                    f"{upload.name}: {e}"
+                )
 
-                        st.session_state.active_document_id = (
-                            document_id
-                        )
+        # ==========================================
+        # Make this batch ACTIVE
+        # ==========================================
 
-                        st.session_state.active_document_name = (
-                            upload.name
-                        )
+        st.session_state.active_document_ids = (
+            indexed_ids
+        )
 
-                        progress.progress(
-                            100,
-                            text="Indexing complete!"
-                        )
+        st.session_state.active_document_names = (
+            indexed_names
+        )
 
-                        st.success(
-                            f"✅ {upload.name}"
-                        )
+        overall_progress.progress(
+            1.0,
+            text="Indexing complete!"
+        )
 
-                        st.write(
-                            f"Added {stored} chunks."
-                        )
+        # ==========================================
+        # Summary
+        # ==========================================
 
-                        st.info(
-                            "This PDF is now the active document. "
-                            "Questions will only search this PDF."
-                        )
+        st.divider()
 
-                        progress.empty()
+        st.success(
+            f"Finished processing {total_files} PDFs."
+        )
 
-        except Exception as e:
+        st.write(
+            f"📄 Active PDFs: {len(indexed_ids)}"
+        )
 
-            progress.empty()
+        st.write(
+            f"🧩 New chunks: {total_chunks}"
+        )
 
-            st.error(
-                f"Error processing {upload.name}: {e}"
+        if skipped_files:
+            st.write(
+                f"⏭️ Already indexed: {skipped_files}"
             )
+
+        if failed_files:
+            st.write(
+                f"❌ Failed: {failed_files}"
+            )
+
+        st.info(
+            "All successfully indexed PDFs in this "
+            "batch are now part of the active knowledge base."
+        )
 
 
     # ==========================================
-    # ACTIVE DOCUMENT
+    # ACTIVE DOCUMENTS
     # ==========================================
 
     st.divider()
 
-    st.subheader("📄 Active Document")
+    st.subheader("📄 Active PDFs")
 
-    if st.session_state.active_document_id:
+    active_names = (
+        st.session_state.active_document_names
+    )
+
+    if active_names:
 
         st.success(
-            st.session_state.active_document_name
+            f"{len(active_names)} PDF"
+            f"{'s' if len(active_names) != 1 else ''} active"
         )
 
+        for name in active_names:
+
+            st.caption(
+                f"• {name}"
+            )
+
         st.caption(
-            "Only this PDF will be searched."
+            "Questions will search only these PDFs."
         )
 
     else:
 
         st.info(
-            "No PDF selected."
+            "No PDFs indexed yet."
         )
 
 
 # ==========================================
-# CHAT INTERFACE
+# MAIN CHAT AREA
 # ==========================================
 
-st.subheader("💬 Ask your document")
+st.subheader("💬 Ask your documents")
 
-if not st.session_state.active_document_id:
 
-    st.info(
-        "Upload and index a PDF from the sidebar "
-        "before asking a question."
+active_ids = (
+    st.session_state.active_document_ids
+)
+
+active_names = (
+    st.session_state.active_document_names
+)
+
+
+if active_ids:
+
+    st.caption(
+        f"🔎 Searching across "
+        f"**{len(active_ids)} active PDF"
+        f"{'s' if len(active_ids) != 1 else ''}**"
     )
 
 else:
 
-    st.caption(
-        f"Searching: "
-        f"**{st.session_state.active_document_name}**"
+    st.info(
+        "Upload and index PDF files from the sidebar "
+        "before asking questions."
     )
 
 
+# ==========================================
+# QUESTION
+# ==========================================
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+
 question = st.chat_input(
-    "Ask something about your PDF..."
+    "Ask something about your PDFs..."
 )
 
 
 # ==========================================
-# ANSWER QUESTION
+# ANSWER
 # ==========================================
 
 if question:
 
+    st.session_state.messages.append({
+        "role": "user",
+        "content": question,
+    })
+
     with st.chat_message("user"):
+
         st.write(question)
 
     with st.chat_message("assistant"):
 
         matches = []
 
-        if not st.session_state.active_document_id:
+        if not active_ids:
 
-            st.warning(
-                "Please upload and index a PDF first."
+            answer = (
+                "Please upload and index at least "
+                "one PDF first."
             )
+            st.warning(answer)
 
         else:
 
             try:
 
                 with st.spinner(
-                    "Searching the active PDF..."
+                    "Searching your PDFs..."
                 ):
 
+                    previous_questions = [
+                        message["content"]
+                        for message in st.session_state.messages[:-1]
+                        if message["role"] == "user"
+                    ][-2:]
+                    retrieval_question = "\n".join(
+                        previous_questions + [question]
+                    )
                     matches = retriever.retrieve(
-                        question=question,
-                        document_id=(
-                            st.session_state.active_document_id
-                        ),
+                        question=retrieval_question,
+                        document_ids=active_ids,
                         n_results=5
                     )
 
                 if matches:
 
                     answer = generate_answer(
-                        question,
-                        matches
+                        question=question,
+                        contexts=matches,
+                        history=st.session_state.messages,
                     )
 
                     st.markdown(answer)
 
                 else:
 
-                    st.info(
+                    answer = (
                         "I couldn't find relevant information "
-                        "in the active PDF."
+                        "in the active PDFs."
                     )
+                    st.info(answer)
 
             except Exception as e:
 
-                st.error(
-                    f"Error while answering: {e}"
-                )
+                answer = "I could not answer that question because an internal error occurred."
+                st.error(f"{answer} {e}")
+
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": answer,
+        })
 
 
-    # ==========================================
-    # SOURCES
-    # ==========================================
+        # ======================================
+        # SOURCES
+        # ======================================
 
-    if matches:
+        if matches:
 
-        st.subheader("📌 Sources")
+            st.subheader(
+                "📌 Sources"
+            )
 
-        for match in matches:
+            for match in matches:
 
-            with st.expander(
-                f"{match['source']} · "
-                f"Page {match['page']}"
-            ):
+                with st.expander(
+                    f"{match['source']} · "
+                    f"Page {match['page']}"
+                ):
 
-                st.write(
-                    match["text"]
-                )
+                    st.write(
+                        match["text"]
+                    )
 
-                st.caption(
-                    f"Similarity: "
-                    f"{match['similarity']:.4f}"
-                )
+                    st.caption(
+                        f"Similarity: "
+                        f"{match['similarity']:.4f}"
+                    )

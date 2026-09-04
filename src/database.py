@@ -78,20 +78,18 @@ class VectorDatabase:
             rows.append({
                 "document_id": document_id,
                 "filename": document_name,
-                "page_number": chunk.get(
-                    "page",
+                "page_number": int(
                     chunk.get("page_number", 0)
                 ),
-                "chunk_index": chunk.get(
-                    "chunk_index",
-                    index
-                ),
+                "chunk_index": index,
                 "content": str(
                     chunk["text"]
                 ),
-                "embedding": embedding.tolist()
-                if hasattr(embedding, "tolist")
-                else list(embedding)
+                "embedding": (
+                    embedding.tolist()
+                    if hasattr(embedding, "tolist")
+                    else list(embedding)
+                )
             })
 
         if not rows:
@@ -105,3 +103,23 @@ class VectorDatabase:
         )
 
         return len(response.data or [])
+
+    def search_chunks(
+        self,
+        query_embedding: list[float],
+        document_ids: list[int],
+        n_results: int = 5,
+    ) -> list[dict]:
+        """Run Top-K cosine search in Supabase through the pgvector RPC."""
+        if not document_ids:
+            return []
+
+        response = self.client.rpc(
+            "match_chunks",
+            {
+                "query_embedding": query_embedding,
+                "match_document_ids": document_ids,
+                "match_count": n_results,
+            },
+        ).execute()
+        return response.data or []

@@ -1,4 +1,5 @@
 import os
+import re
 
 from dotenv import load_dotenv
 from google import genai
@@ -9,6 +10,7 @@ load_dotenv()
 def generate_answer(
     question: str,
     contexts: list[dict],
+    history: list[dict] | None = None,
     model: str = "gemini-3.6-flash",
 ) -> str:
     """
@@ -31,13 +33,17 @@ def generate_answer(
     # Build the context sent to Gemini
     context_parts = []
 
-    for item in contexts:
+    for index, item in enumerate(contexts, start=1):
         context_parts.append(
-            f"[Source: {item['source']}, Page: {item['page']}]\n"
+            f"[S{index}] {item['source']}, Page {item['page']}\n"
             f"{item['text']}"
         )
 
     context = "\n\n".join(context_parts)
+    conversation = "\n".join(
+        f"{item['role']}: {item['content']}"
+        for item in (history or [])[-6:]
+    ) or "No previous conversation."
 
     prompt = f"""
 You are a document-grounded RAG assistant.
@@ -52,12 +58,15 @@ STRICT RULES:
    clearly say that the information is not available in the
    uploaded documents.
 4. Keep the answer concise and useful.
-5. At the end of relevant statements, include citations using:
-   [filename, Page X]
-6. Only cite pages that actually support the statement.
+5. Cite every factual statement with one or more valid source labels such as [S1].
+6. Use only source labels that appear in the provided context.
+7. If no source supports the answer, say that the information is not available.
 
 DOCUMENT CONTEXT:
 {context}
+
+RECENT CONVERSATION:
+{conversation}
 
 USER QUESTION:
 {question}
@@ -78,7 +87,22 @@ ANSWER:
         if not answer:
             return "No answer was returned by Gemini."
 
-        return answer.strip()
+        answer = answer.strip()
+        allowed = {f"S{index}" for index in range(1, len(contexts) + 1)}
+        cited = set(re.findall(r"\[(S\d+)\]", answer))
+        answer = re.sub(
+            r"\[(S\d+)\]",
+            lambda match: match.group(0)
+            if match.group(1) in allowed
+            else "",
+            answer,
+        ).strip()
+        if not cited & allowed:
+            answer += "\n\nSources: " + ", ".join(
+                f"[{f'S{index}'}] {item['source']}, page {item['page']}"
+                for index, item in enumerate(contexts, start=1)
+            )
+        return answer
 
     except Exception as e:
         return f"Gemini error: {e}"

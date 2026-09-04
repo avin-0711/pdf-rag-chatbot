@@ -1,16 +1,14 @@
-from io import BytesIO
 from pathlib import Path
 
-import fitz
-from pypdf import PdfReader
+import pymupdf
 
 
 def extract_pages(pdf_source: bytes | str | Path) -> list[dict[str, str | int]]:
     """Extract non-empty PDF pages while preserving page numbers."""
     if isinstance(pdf_source, bytes):
-        document = fitz.open(stream=pdf_source, filetype="pdf")
+        document = pymupdf.open(stream=pdf_source, filetype="pdf")
     else:
-        document = fitz.open(str(pdf_source))
+        document = pymupdf.open(str(pdf_source))
 
     try:
         return [

@@ -4,7 +4,7 @@ A Streamlit application that lets you upload multiple PDFs, extract their text, 
 
 ## Features
 
-- Upload and index up to five PDFs at a time.
+- Upload and index up to 50 PDFs at a time.
 - Extract text page by page with PyMuPDF.
 - Split pages into overlapping word chunks.
 - Generate embeddings with `all-MiniLM-L6-v2`.
@@ -21,6 +21,14 @@ pdf-rag-chatbot/
 ├── app.py
 ├── requirements.txt
 ├── .env.example
+├── architecture.md
+├── docs/
+│   ├── demo-script.md
+│   └── screenshots/
+│       └── app-home.png
+├── evaluation.md
+├── supabase/
+│   └── schema.sql
 ├── pdfs/
 │   └── test.pdf
 ├── src/
@@ -32,6 +40,8 @@ pdf-rag-chatbot/
 │   ├── retriever.py
 │   └── generator.py
 └── test*.py
+└── tests/
+	└── test_rag_components.py
 ```
 
 ## Requirements
@@ -100,7 +110,9 @@ The application expects these tables:
 | `content` | `text` | Chunk text |
 | `embedding` | `vector(384)` | `all-MiniLM-L6-v2` embedding |
 
-Enable the `vector` extension in Supabase and use a vector dimension of 384 for the embedding column.
+The complete table, RPC, and HNSW index setup is in `supabase/schema.sql`. Run that file in the Supabase SQL editor before using the app.
+
+The RPC performs Top-K cosine retrieval inside Postgres. The application also rejects results below a similarity threshold so unsupported questions can receive a no-answer response.
 
 ## Run Locally
 
@@ -139,6 +151,12 @@ The command should print at least one extracted page for a text-based PDF.
 
 ## Smoke Tests
 
+Run the offline automated tests with:
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest -q
+```
+
 The repository includes standalone scripts for individual components. Run them from the project root with the virtual-environment interpreter:
 
 ```powershell
@@ -164,6 +182,13 @@ Some scripts require valid Supabase or Gemini credentials and may perform extern
 7. Deploy or reboot the app after saving secrets.
 
 The repository URL is https://github.com/avin-0711/pdf-rag-chatbot.
+
+## Evidence
+
+- [Architecture diagram](architecture.md)
+- [Evaluation and testing results](evaluation.md)
+- [Application screenshot](docs/screenshots/app-home.png)
+- [3-5 minute demonstration script](docs/demo-script.md)
 
 ## Troubleshooting
 

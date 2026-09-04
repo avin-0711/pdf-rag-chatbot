@@ -7,7 +7,8 @@ question = "What is the National Testing Agency?"
 print("Question:", question)
 
 results = retriever.retrieve(
-    question,
+    question=question,
+    document_ids=[],
     n_results=5
 )
 
