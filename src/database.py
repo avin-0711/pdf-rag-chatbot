@@ -115,39 +115,13 @@ class VectorDatabase:
         if not document_ids:
             return []
 
-        use_vector_rpc = os.getenv("USE_VECTOR_RPC", "false").lower() == "true"
-        if not use_vector_rpc:
-            return self._legacy_search_chunks(
-                query_embedding,
-                document_ids,
-                n_results,
-            )
-
-        try:
-            response = self.client.rpc(
-                "match_chunks",
-                {
-                    "query_embedding": query_embedding,
-                    "match_document_ids": document_ids,
-                    "match_count": n_results,
-                },
-            ).execute()
-            return response.data or []
-        except Exception as error:
-            error_code = getattr(error, "code", None)
-            error_text = str(error)
-            missing_rpc = (
-                error_code == "PGRST202"
-                or "Could not find the function public.match_chunks" in error_text
-                or "schema cache" in error_text
-            )
-            if not missing_rpc:
-                raise
-            return self._legacy_search_chunks(
-                query_embedding,
-                document_ids,
-                n_results,
-            )
+        # Keep retrieval independent of the optional RPC until every deployed
+        # Supabase project has the same match_chunks signature and schema cache.
+        return self._legacy_search_chunks(
+            query_embedding,
+            document_ids,
+            n_results,
+        )
 
     def _legacy_search_chunks(
         self,

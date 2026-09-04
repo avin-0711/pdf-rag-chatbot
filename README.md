@@ -114,7 +114,7 @@ The application expects these tables:
 | `content` | `text` | Chunk text |
 | `embedding` | `vector(384)` | `all-MiniLM-L6-v2` embedding |
 
-The complete table, RPC, and HNSW index setup is in `supabase/schema.sql`. Run that file in the Supabase SQL editor before using the app. Keep `USE_VECTOR_RPC=false` until the SQL has been applied and the `match_chunks` function appears in Supabase's schema cache; then set it to `true` for indexed vector retrieval.
+The complete table, RPC, and HNSW index setup is in `supabase/schema.sql`. The current app uses document-filtered cosine retrieval over stored embeddings, so it remains compatible with existing Supabase projects. The RPC schema is included for a future database-side optimization.
 
 The RPC performs Top-K cosine retrieval inside Postgres. The application also rejects results below a similarity threshold so unsupported questions can receive a no-answer response.
 
