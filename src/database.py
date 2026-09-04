@@ -1,5 +1,6 @@
 import os
 
+import numpy as np
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
@@ -114,12 +115,66 @@ class VectorDatabase:
         if not document_ids:
             return []
 
-        response = self.client.rpc(
-            "match_chunks",
+        try:
+            response = self.client.rpc(
+                "match_chunks",
+                {
+                    "query_embedding": query_embedding,
+                    "match_document_ids": document_ids,
+                    "match_count": n_results,
+                },
+            ).execute()
+            return response.data or []
+        except Exception as error:
+            if getattr(error, "code", None) != "PGRST202":
+                raise
+            return self._legacy_search_chunks(
+                query_embedding,
+                document_ids,
+                n_results,
+            )
+
+    def _legacy_search_chunks(
+        self,
+        query_embedding: list[float],
+        document_ids: list[int],
+        n_results: int,
+    ) -> list[dict]:
+        """Compatibility path until the new filtered RPC is deployed."""
+        response = (
+            self.client
+            .table("chunks")
+            .select(
+                "id, document_id, filename, page_number, "
+                "chunk_index, content, embedding"
+            )
+            .in_("document_id", document_ids)
+            .execute()
+        )
+        query = np.asarray(query_embedding, dtype=np.float32)
+        query_norm = np.linalg.norm(query)
+        if query_norm == 0:
+            return []
+        query /= query_norm
+
+        scored = []
+        for row in response.data or []:
+            embedding = row.get("embedding")
+            if isinstance(embedding, str):
+                embedding = [float(value.strip()) for value in embedding.strip("[]").split(",")]
+            vector = np.asarray(embedding, dtype=np.float32)
+            if vector.shape != query.shape:
+                continue
+            norm = np.linalg.norm(vector)
+            if norm == 0:
+                continue
+            scored.append((float(np.dot(vector / norm, query)), row))
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return [
             {
-                "query_embedding": query_embedding,
-                "match_document_ids": document_ids,
-                "match_count": n_results,
-            },
-        ).execute()
-        return response.data or []
+                **row,
+                "similarity": similarity,
+            }
+            for similarity, row in scored[:n_results]
+        ]
