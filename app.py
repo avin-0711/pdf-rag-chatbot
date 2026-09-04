@@ -77,6 +77,11 @@ if "active_document_names" not in st.session_state:
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+if "theme_mode" not in st.session_state:
+    st.session_state.theme_mode = "Light"
+
+theme_mode = st.session_state.theme_mode
+
 
 # ==========================================
 # LOAD RESOURCES
@@ -113,6 +118,14 @@ with st.sidebar:
 
     st.header("Your library", icon=":material/folder_open:")
     st.caption("Up to 50 PDFs per indexing session")
+
+    theme_mode = st.segmented_control(
+        "Appearance",
+        options=["Light", "Dark"],
+        default=st.session_state.theme_mode,
+        key="theme_mode",
+        format_func=lambda value: f":material/{'light_mode' if value == 'Light' else 'dark_mode'}: {value}",
+    )
 
     uploads = st.file_uploader(
         "Choose PDF files",
@@ -449,6 +462,31 @@ with st.sidebar:
 # ==========================================
 # MAIN CHAT AREA
 # ==========================================
+
+if st.session_state.theme_mode == "Dark":
+    st.markdown(
+        """
+        <style>
+        :root {
+            --ink: #edf3f0;
+            --muted: #a9bbb5;
+            --paper: #162321;
+            --line: #30443f;
+            --sage: #8bc0ad;
+            --coral: #e89a7e;
+        }
+        body, .stApp, [data-testid="stAppViewContainer"] { background: #162321 !important; }
+        [data-testid="stHeader"] { background: #162321 !important; }
+        [data-testid="stSidebar"], [data-testid="stSidebarContent"] { background: #101a19 !important; border-right-color: #30443f !important; }
+        [data-testid="stSidebar"] * { color: #edf3f0; }
+        .app-title, .app-deck, .metric-strip, [data-testid="stChatMessage"] { color: var(--ink); }
+        .app-deck, [data-testid="stCaptionContainer"] { color: var(--muted); }
+        div[data-testid="stFileUploader"] { background: rgba(255,255,255,.04); border-color: #55766c; }
+        [data-testid="stChatInput"] { background: #20332f; border-color: #55766c; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 active_ids = st.session_state.active_document_ids
 active_names = st.session_state.active_document_names

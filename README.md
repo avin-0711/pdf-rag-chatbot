@@ -13,6 +13,7 @@ A Streamlit application that lets you upload multiple PDFs, extract their text, 
 - Search only the PDFs in the active indexing batch.
 - Generate answers from retrieved context with Gemini.
 - Show source filename and page citations in responses.
+- Switch between light and dark reading modes from the sidebar.
 
 ## Project Structure
 
