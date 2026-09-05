@@ -4,6 +4,8 @@ import re
 from dotenv import load_dotenv
 from google import genai
 
+from src.config import get_setting
+
 load_dotenv()
 
 
@@ -23,11 +25,11 @@ def generate_answer(
             "documents to answer this question."
         )
 
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = get_setting("GEMINI_API_KEY")
 
     if not api_key:
         return (
-            "GEMINI_API_KEY is missing from the .env file."
+            "GEMINI_API_KEY is missing. Add it to .env locally or Streamlit Cloud Secrets."
         )
 
     # Build the context sent to Gemini

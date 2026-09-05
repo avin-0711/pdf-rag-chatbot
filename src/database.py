@@ -4,6 +4,8 @@ import numpy as np
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
+from src.config import get_setting
+
 
 load_dotenv()
 
@@ -13,17 +15,17 @@ class VectorDatabase:
 
     def __init__(self):
 
-        supabase_url = os.getenv("SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_KEY")
+        supabase_url = get_setting("SUPABASE_URL")
+        supabase_key = get_setting("SUPABASE_KEY")
 
         if not supabase_url:
             raise ValueError(
-                "SUPABASE_URL is missing from the .env file."
+                "SUPABASE_URL is missing. Add it to .env locally or Streamlit Cloud Secrets."
             )
 
         if not supabase_key:
             raise ValueError(
-                "SUPABASE_KEY is missing from the .env file."
+                "SUPABASE_KEY is missing. Add it to .env locally or Streamlit Cloud Secrets."
             )
 
         self.client: Client = create_client(

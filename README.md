@@ -79,7 +79,6 @@ Create a `.env` file in the project root. Start from `.env.example`:
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_KEY=your-supabase-key
 GEMINI_API_KEY=your-gemini-api-key
-USE_VECTOR_RPC=false
 ```
 
 Never commit `.env` or paste live credentials into source code. For Streamlit Community Cloud, add the same values under **App settings -> Secrets** using TOML syntax:
