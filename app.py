@@ -615,7 +615,10 @@ if question:
                     )
                     matches = retriever.retrieve(
                         question=retrieval_question,
-                        document_ids=active_ids,
+                        document_ids=database.searchable_document_ids(
+                            active_ids,
+                            active_names,
+                        ),
                         n_results=5
                     )
                     search_status.update(label="Sources found", state="complete")

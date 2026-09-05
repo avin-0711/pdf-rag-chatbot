@@ -125,6 +125,52 @@ class VectorDatabase:
             n_results,
         )
 
+    def searchable_document_ids(
+        self,
+        document_ids: list[int],
+        filenames: list[str],
+    ) -> list[int]:
+        """Return active IDs that have chunks, repairing stale session IDs by filename."""
+        chunk_rows = (
+            self.client
+            .table("chunks")
+            .select("document_id")
+            .in_("document_id", document_ids)
+            .execute()
+            .data
+            or []
+        )
+        searchable_ids = list(dict.fromkeys(row["document_id"] for row in chunk_rows))
+        if searchable_ids:
+            return searchable_ids
+
+        if not filenames:
+            return []
+
+        matching_documents = (
+            self.client
+            .table("documents")
+            .select("id")
+            .in_("filename", filenames)
+            .execute()
+            .data
+            or []
+        )
+        candidate_ids = [row["id"] for row in matching_documents]
+        if not candidate_ids:
+            return []
+
+        populated = (
+            self.client
+            .table("chunks")
+            .select("document_id")
+            .in_("document_id", candidate_ids)
+            .execute()
+            .data
+            or []
+        )
+        return list(dict.fromkeys(row["document_id"] for row in populated))
+
     def _legacy_search_chunks(
         self,
         query_embedding: list[float],
