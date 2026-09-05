@@ -237,27 +237,35 @@ with st.sidebar:
                     .execute()
                 )
 
+                document_id = None
+
                 if existing.data:
 
-                    document_id = existing.data[0]["id"]
+                    existing_document_id = existing.data[0]["id"]
                     document_name = existing.data[0]["filename"]
-
-                    indexed_ids.append(
-                        document_id
+                    existing_chunks = (
+                        database.client
+                        .table("chunks")
+                        .select("id")
+                        .eq("document_id", existing_document_id)
+                        .limit(1)
+                        .execute()
                     )
 
-                    indexed_names.append(
-                        document_name
+                    if existing_chunks.data:
+                        document_id = existing_document_id
+                        indexed_ids.append(document_id)
+                        indexed_names.append(document_name)
+                        skipped_files += 1
+                        st.info(
+                            f"⏭️ {document_name} "
+                            f"is already indexed."
+                        )
+                        continue
+
+                    st.warning(
+                        f"Reprocessing {document_name}; its previous index had no chunks."
                     )
-
-                    skipped_files += 1
-
-                    st.info(
-                        f"⏭️ {document_name} "
-                        f"is already indexed."
-                    )
-
-                    continue
 
                 # ==================================
                 # Save temporary PDF
@@ -332,10 +340,11 @@ with st.sidebar:
                 # Create document
                 # ==================================
 
-                document_id = database.add_document(
-                    filename=upload.name,
-                    file_hash=file_hash
-                )
+                if document_id is None:
+                    document_id = database.add_document(
+                        filename=upload.name,
+                        file_hash=file_hash
+                    )
 
                 # ==================================
                 # Store chunks
