@@ -15,3 +15,6 @@ headingFont = "sans-serif"
 baseFontSize = 15
 headingFontSizes = ["38px", "28px", "22px", "18px", "15px", "13px"]
 headingFontWeights = [700, 650, 650, 600, 500, 500]
+
+[server]
+fileWatcherType = "none"
