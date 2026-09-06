@@ -32,7 +32,7 @@ st.caption(
 
 
 # ==========================================
-# LOAD COMPONENTS
+# LOAD EMBEDDING MODEL
 # ==========================================
 
 @st.cache_resource
@@ -40,19 +40,26 @@ def get_embedding_model():
     return EmbeddingModel()
 
 
+# ==========================================
+# LOAD DATABASE
+# ==========================================
+
 @st.cache_resource
 def get_database():
     return VectorDatabase()
 
 
-@st.cache_resource
-def get_retriever(database, embedding_model):
-    return Retriever(database, embedding_model)
-
+# ==========================================
+# LOAD COMPONENTS
+# ==========================================
 
 embedding_model = get_embedding_model()
 database = get_database()
-retriever = get_retriever(
+
+# IMPORTANT:
+# Do NOT cache Retriever with database/embedding_model
+# as arguments because Streamlit tries to hash them.
+retriever = Retriever(
     database,
     embedding_model
 )
@@ -72,35 +79,45 @@ with st.sidebar:
         accept_multiple_files=True
     )
 
+    if uploads:
+        st.caption(
+            f"{len(uploads)} PDF(s) selected"
+        )
+
     index_documents = st.button(
         "Index Documents",
         type="primary",
         disabled=not uploads
     )
 
+    # ==========================================
+    # INDEX DOCUMENTS
+    # ==========================================
+
     if index_documents and uploads:
 
         progress = st.progress(
             0,
-            text="Indexing documents..."
+            text="Starting indexing..."
         )
 
         total_chunks = 0
         indexed_count = 0
         skipped_count = 0
+        failed_count = 0
 
         for index, upload in enumerate(uploads):
 
             try:
 
                 # ==========================================
-                # GET FILE BYTES
+                # READ PDF
                 # ==========================================
 
                 file_bytes = upload.getvalue()
 
                 # ==========================================
-                # CREATE REAL FILE HASH
+                # SHA-256 FILE HASH
                 # ==========================================
 
                 file_hash = hashlib.sha256(
@@ -108,7 +125,7 @@ with st.sidebar:
                 ).hexdigest()
 
                 # ==========================================
-                # CHECK IF ALREADY INDEXED
+                # CHECK FOR DUPLICATE
                 # ==========================================
 
                 existing = (
@@ -124,7 +141,7 @@ with st.sidebar:
                     skipped_count += 1
 
                     st.info(
-                        f"⏭️ {upload.name} is already indexed."
+                        f"⏭️ {upload.name} is already indexed. Skipping."
                     )
 
                     progress.progress(
@@ -135,7 +152,7 @@ with st.sidebar:
                     continue
 
                 # ==========================================
-                # SAVE TEMPORARY PDF
+                # TEMPORARY PDF FILE
                 # ==========================================
 
                 with tempfile.NamedTemporaryFile(
@@ -147,8 +164,13 @@ with st.sidebar:
                     temp_path = temp_file.name
 
                 # ==========================================
-                # EXTRACT TEXT
+                # EXTRACT PAGES
                 # ==========================================
+
+                progress.progress(
+                    index / len(uploads),
+                    text=f"Extracting {upload.name}..."
+                )
 
                 pages = extract_text_from_pdf(
                     temp_path
@@ -156,50 +178,81 @@ with st.sidebar:
 
                 if not pages:
 
-                    st.warning(
-                        f"⚠️ Could not extract text from {upload.name}."
-                    )
+                    failed_count += 1
 
-                    progress.progress(
-                        (index + 1) / len(uploads),
-                        text=f"Failed: {upload.name}"
+                    st.warning(
+                        f"⚠️ Could not extract text from "
+                        f"{upload.name}."
                     )
 
                     continue
 
                 # ==========================================
-                # CREATE CHUNKS
+                # CHUNK PDF
                 # ==========================================
 
                 chunks = chunk_pages(pages)
 
                 if not chunks:
 
-                    st.warning(
-                        f"⚠️ No chunks found in {upload.name}."
-                    )
+                    failed_count += 1
 
-                    progress.progress(
-                        (index + 1) / len(uploads),
-                        text=f"Failed: {upload.name}"
+                    st.warning(
+                        f"⚠️ No text chunks found in "
+                        f"{upload.name}."
                     )
 
                     continue
 
+                st.write(
+                    f"📄 {upload.name}: "
+                    f"{len(pages)} pages → "
+                    f"{len(chunks)} chunks"
+                )
+
                 # ==========================================
-                # GENERATE EMBEDDINGS
+                # CREATE EMBEDDINGS
                 # ==========================================
 
-                with st.spinner(
-                    f"Creating embeddings for {upload.name}..."
-                ):
+                progress.progress(
+                    index / len(uploads),
+                    text=f"Creating embeddings for {upload.name}..."
+                )
 
-                    vectors = embedding_model.encode(
-                        [
-                            str(chunk["text"])
-                            for chunk in chunks
-                        ]
+                vectors = embedding_model.encode(
+                    [
+                        str(chunk["text"])
+                        for chunk in chunks
+                    ]
+                )
+
+                # ==========================================
+                # SAFETY CHECK
+                # ==========================================
+
+                if not vectors:
+
+                    failed_count += 1
+
+                    st.warning(
+                        f"⚠️ No embeddings generated for "
+                        f"{upload.name}."
                     )
+
+                    continue
+
+                if len(vectors[0]) != 384:
+
+                    failed_count += 1
+
+                    st.error(
+                        f"❌ Wrong embedding dimension for "
+                        f"{upload.name}: "
+                        f"{len(vectors[0])}. "
+                        f"Expected 384."
+                    )
+
+                    continue
 
                 # ==========================================
                 # ADD DOCUMENT
@@ -230,26 +283,39 @@ with st.sidebar:
                 )
 
                 st.success(
-                    f"✅ {upload.name}: {stored} chunks added"
+                    f"✅ {upload.name}: "
+                    f"{stored} chunks indexed"
                 )
 
             except Exception as e:
 
+                failed_count += 1
+
                 st.error(
-                    f"❌ Error processing {upload.name}: {e}"
+                    f"❌ Error processing "
+                    f"{upload.name}: {e}"
                 )
 
-        progress.empty()
+        # ==========================================
+        # FINISH
+        # ==========================================
+
+        progress.progress(
+            1.0,
+            text="Indexing complete"
+        )
 
         st.success(
-            f"Finished indexing: {indexed_count} new document(s), "
+            f"Finished indexing: "
+            f"{indexed_count} new document(s), "
             f"{skipped_count} already indexed, "
+            f"{failed_count} failed, "
             f"{total_chunks} new chunks."
         )
 
 
 # ==========================================
-# CHAT
+# MAIN CHAT
 # ==========================================
 
 st.subheader("💬 Ask your documents")
@@ -258,6 +324,10 @@ question = st.chat_input(
     "Ask something about your uploaded PDFs..."
 )
 
+
+# ==========================================
+# QUESTION PROCESSING
+# ==========================================
 
 if question:
 
@@ -269,7 +339,7 @@ if question:
         st.write(question)
 
     # ==========================================
-    # ASSISTANT
+    # ASSISTANT MESSAGE
     # ==========================================
 
     with st.chat_message("assistant"):
@@ -278,8 +348,12 @@ if question:
 
         try:
 
+            # ------------------------------------------
+            # RETRIEVE
+            # ------------------------------------------
+
             with st.spinner(
-                "Searching the knowledge base..."
+                "🔎 Searching your documents..."
             ):
 
                 matches = retriever.retrieve(
@@ -287,35 +361,49 @@ if question:
                     n_results=5
                 )
 
-            # ==========================================
-            # NO RESULTS
-            # ==========================================
+            # ------------------------------------------
+            # SHOW RETRIEVAL DEBUG
+            # ------------------------------------------
 
-            if not matches:
+            if matches:
 
-                st.warning(
-                    "I couldn't find relevant information "
-                    "in the uploaded documents."
+                st.caption(
+                    f"Retrieved {len(matches)} relevant chunks."
                 )
 
-            # ==========================================
-            # GENERATE ANSWER
-            # ==========================================
+                # ------------------------------------------
+                # GENERATE ANSWER
+                # ------------------------------------------
+
+                with st.spinner(
+                    "🤖 Generating answer..."
+                ):
+
+                    answer = generate_answer(
+                        question,
+                        matches
+                    )
+
+                st.markdown(answer)
 
             else:
 
-                answer = generate_answer(
-                    question,
-                    matches
+                st.warning(
+                    "I couldn't find relevant information "
+                    "in the indexed documents."
                 )
 
-                st.markdown(answer)
+                st.caption(
+                    "The PDF may be indexed, but the "
+                    "retriever returned no matching chunks."
+                )
 
         except Exception as e:
 
             st.error(
                 f"❌ Error while answering: {e}"
             )
+
 
     # ==========================================
     # SOURCES
@@ -339,7 +427,7 @@ if question:
 
             similarity = match.get(
                 "similarity",
-                0
+                0.0
             )
 
             with st.expander(
@@ -354,17 +442,17 @@ if question:
                 )
 
                 st.caption(
-                    f"Similarity: {similarity:.4f}"
+                    f"Similarity: {float(similarity):.4f}"
                 )
 
 
 # ==========================================
-# INITIAL MESSAGE
+# STARTUP MESSAGE
 # ==========================================
 
 else:
 
     st.info(
-        "Upload and index a PDF from the sidebar, "
-        "then ask a question."
+        "📚 Upload and index your PDFs from the "
+        "sidebar, then ask a question."
     )
